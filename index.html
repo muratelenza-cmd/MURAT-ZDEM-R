@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Thumbnail Üretici</title>
+<style>
+  :root { --bg:#111; --panel:#1c1c1f; --fg:#f2f2f2; --accent:#ff2d2d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--fg);
+         display:flex; flex-wrap:wrap; gap:16px; padding:16px; }
+  .panel { background:var(--panel); padding:16px; border-radius:10px; width:320px; flex:0 0 auto; }
+  .preview { flex:1 1 480px; min-width:0; }
+  label { display:block; margin:10px 0 4px; font-size:13px; opacity:.8; }
+  input[type=text], select, textarea { width:100%; padding:8px; border-radius:6px; border:1px solid #333;
+         background:#0f0f10; color:var(--fg); font:inherit; }
+  input[type=range] { width:100%; }
+  input[type=color] { width:100%; height:34px; border:none; background:none; padding:0; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  button { width:100%; margin-top:16px; padding:12px; border:0; border-radius:8px;
+           background:var(--accent); color:#fff; font-size:16px; font-weight:700; cursor:pointer; }
+  canvas { width:100%; height:auto; border-radius:8px; background:#000; display:block; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  small { opacity:.6; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <h1>Thumbnail Üretici</h1>
+  <label>Başlık (satır başı için Enter)</label>
+  <textarea id="title" rows="3">İNANILMAZ{n}SONUÇ!</textarea>
+  <label>Yazı tipi</label>
+  <select id="font">
+    <option value="Impact, 'Arial Black', sans-serif">Impact</option>
+    <option value="'Arial Black', Arial, sans-serif">Arial Black</option>
+    <option value="'Comic Sans MS', cursive">Comic Sans</option>
+    <option value="Georgia, serif">Georgia</option>
+  </select>
+  <label>Yazı boyutu: <span id="sizeVal">130</span></label>
+  <input type="range" id="size" min="40" max="260" value="130">
+  <div class="row">
+    <div><label>Yazı rengi</label><input type="color" id="fg" value="#ffffff"></div>
+    <div><label>Kontur rengi</label><input type="color" id="stroke" value="#000000"></div>
+  </div>
+  <label>Yazı konumu</label>
+  <select id="align">
+    <option value="left">Sol</option>
+    <option value="center">Orta</option>
+    <option value="right">Sağ</option>
+  </select>
+  <div class="row">
+    <div><label>Arka plan 1</label><input type="color" id="bg1" value="#ff2d2d"></div>
+    <div><label>Arka plan 2</label><input type="color" id="bg2" value="#1a1aff"></div>
+  </div>
+  <label>Arka plan resmi (isteğe bağlı)</label>
+  <input type="file" id="bgImg" accept="image/*">
+  <label>Ön plan resmi / yüz (isteğe bağlı, şeffaf PNG iyi olur)</label>
+  <input type="file" id="fgImg" accept="image/*">
+  <label>Ön plan konumu</label>
+  <select id="fgSide">
+    <option value="right">Sağ</option>
+    <option value="left">Sol</option>
+  </select>
+  <button id="dl">PNG indir (1280×720)</button>
+  <p><small>Her şey tarayıcında çalışır, hiçbir dosya yüklenmez.</small></p>
+</div>
+<div class="preview"><canvas id="c" width="1280" height="720"></canvas></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $('c'), ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+let bgImage = null, fgImage = null;
+
+function loadFile(input, cb) {
+  input.addEventListener('change', () => {
+    const f = input.files[0];
+    if (!f) { cb(null); draw(); return; }
+    const img = new Image();
+    img.onload = () => { cb(img); draw(); };
+    img.src = URL.createObjectURL(f);
+  });
+}
+loadFile($('bgImg'), i => bgImage = i);
+loadFile($('fgImg'), i => fgImage = i);
+
+function drawCover(img, x, y, w, h) {
+  const s = Math.max(w / img.width, h / img.height);
+  const dw = img.width * s, dh = img.height * s;
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
+
+function draw() {
+  $('sizeVal').textContent = $('size').value;
+  // arka plan
+  if (bgImage) {
+    drawCover(bgImage, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(0, 0, W, H);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, $('bg1').value); g.addColorStop(1, $('bg2').value);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  // ön plan
+  const side = $('fgSide').value;
+  if (fgImage) {
+    const h = H * 0.95, w = fgImage.width * (h / fgImage.height);
+    const x = side === 'right' ? W - w : 0;
+    ctx.drawImage(fgImage, x, H - h, w, h);
+  }
+  // başlık
+  const size = +$('size').value, align = $('align').value;
+  const lines = $('title').value.replace(/\{n\}/g, '\n').split('\n');
+  ctx.font = `900 ${size}px ${$('font').value}`;
+  ctx.textBaseline = 'top'; ctx.textAlign = align;
+  ctx.lineJoin = 'round'; ctx.lineWidth = size * 0.14;
+  ctx.strokeStyle = $('stroke').value; ctx.fillStyle = $('fg').value;
+  const pad = 50, lh = size * 1.05, total = lines.length * lh;
+  const x = align === 'left' ? pad : align === 'right' ? W - pad : W / 2;
+  let y = (H - total) / 2;
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 6;
+  for (const line of lines) {
+    ctx.strokeText(line, x, y, W - pad * 2);
+    ctx.fillText(line, x, y, W - pad * 2);
+    y += lh;
+  }
+  ctx.shadowColor = 'transparent';
+}
+
+document.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener('input', draw));
+$('dl').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.download = 'thumbnail.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(draw);
+draw();
+</script>
+</body>
+</html>
