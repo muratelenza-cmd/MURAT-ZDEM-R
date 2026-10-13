@@ -5,8 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Thumbnail Atölyesi</title>
 <style>
-  :root { --bg:#111; --panel:#1c1c1f; --fg:#f2f2f2; --accent:#ff2d2d; --line:#333; --muted:#9a9aa2; }
+  :root { --bg:#111; --panel:#1c1c1f; --fg:#f2f2f2; --accent:#ff2d2d; --line:#333; --muted:#9a9aa2; --keep:#22c55e; --drop:#ef4444; }
   * { box-sizing: border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; min-height:100%; font-family: system-ui, sans-serif; background:var(--bg); color:var(--fg);
          display:flex; flex-wrap:wrap; gap:16px; padding:16px; }
   .panel { background:var(--panel); padding:16px; border-radius:10px; width:320px; max-width:100%; flex:0 0 auto; }
@@ -23,18 +24,33 @@
   button { width:100%; margin-top:10px; padding:10px; border:0; border-radius:8px;
            background:#2c2c31; color:var(--fg); font-size:14px; font-weight:600; cursor:pointer; }
   button:hover { background:#38383f; }
+  button:disabled { opacity:.5; cursor:default; }
   button.on { background:#2d6cdf; }
+  button.keep.on { background:var(--keep); color:#04230f; }
+  button.drop.on { background:var(--drop); color:#fff; }
   button.primary { background:var(--accent); color:#fff; font-size:16px; font-weight:700; padding:12px; margin-top:16px; }
   fieldset { border:1px solid var(--line); border-radius:8px; margin:14px 0 0; padding:4px 12px 12px; }
   legend { font-size:13px; padding:0 6px; color:var(--muted); }
-  canvas { width:100%; height:auto; border-radius:8px; background:#000; display:block;
-           touch-action:none; cursor:grab; }
-  canvas.dragging { cursor:grabbing; }
-  canvas.picking { cursor:crosshair; }
+  canvas { width:100%; height:auto; border-radius:8px; background:#000; display:block; }
+  #c { touch-action:none; cursor:grab; }
+  #c.dragging { cursor:grabbing; }
   h1 { font-size:18px; margin:0 0 8px; }
   small, .hint { color:var(--muted); font-size:12px; }
   .hint { margin:8px 0 0; min-height:1.2em; }
   .check { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13px; }
+
+  /* Arka plan düzenleyici */
+  #editor { background:var(--panel); border-radius:10px; padding:12px; }
+  .edbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .edbar button { width:auto; margin:0; padding:8px 12px; }
+  .edbar label { margin:0; display:flex; align-items:center; gap:6px; }
+  .edbar input[type=range] { width:110px; }
+  .edbar select { width:auto; }
+  .stage { position:relative; line-height:0; }
+  #edView, #edHints { width:100%; height:auto; border-radius:8px; }
+  #edHints { position:absolute; inset:0; background:transparent; cursor:crosshair; touch-action:none; }
+  .status { font-size:13px; color:var(--muted); margin:8px 0 0; min-height:1.3em; }
+  .sp { flex:1; }
 </style>
 </head>
 <body>
@@ -88,22 +104,53 @@ SONUÇ!</textarea>
   </fieldset>
 
   <fieldset>
-    <legend>Arka planı kaldır (seçili görsel)</legend>
-    <label for="tol">Hassasiyet: <span id="tolVal">40</span></label>
-    <input type="range" id="tol" min="5" max="150" value="40">
-    <label class="check"><input type="checkbox" id="global"> Aynı renkteki her yeri sil (içi boşluklar dahil)</label>
-    <button id="ai" type="button">Yapay zekâ ile sil (internet gerekir)</button>
-    <button id="auto" type="button">Köşelerden otomatik sil</button>
-    <button id="pick" type="button">Dokunarak sil: KAPALI</button>
-    <button id="undo" type="button">Geri al</button>
-    <p class="hint" id="bgHint">Düz renkli arka planlarda en iyi sonucu verir.</p>
+    <legend>Arka plan kaldırıcı</legend>
+    <button id="bgOpen" type="button">Arka planı kaldır (seçili görsel)</button>
+    <button id="bgRestore" type="button">Orijinal görseli geri yükle</button>
+    <p class="hint" id="bgHint"></p>
   </fieldset>
 
   <button id="dl" class="primary" type="button">PNG oluştur (1280×720)</button>
   <p><small>Her şey tarayıcında çalışır, dosya yüklenmez.</small></p>
 </div>
+
 <div class="preview">
   <canvas id="c" width="1280" height="720"></canvas>
+
+  <div id="editor" hidden>
+    <div class="edbar">
+      <button id="edKeep" type="button" class="keep on">Koru</button>
+      <button id="edDrop" type="button" class="drop">Sil</button>
+      <label for="edBrush">Fırça <input type="range" id="edBrush" min="4" max="80" value="22"></label>
+      <button id="edUndo" type="button">Fırçayı geri al</button>
+      <button id="edClear" type="button">İşaretleri temizle</button>
+    </div>
+    <div class="edbar">
+      <label for="edBack">Zemin
+        <select id="edBack">
+          <option value="check">Damalı</option>
+          <option value="white">Beyaz</option>
+          <option value="black">Siyah</option>
+          <option value="green">Yeşil</option>
+          <option value="orig">Orijinal</option>
+        </select>
+      </label>
+      <label for="edShift">Kenar <input type="range" id="edShift" min="-10" max="10" value="0"></label>
+      <label for="edSoft">Yumuşaklık <input type="range" id="edSoft" min="0" max="10" value="3"></label>
+    </div>
+    <div class="stage">
+      <canvas id="edView"></canvas>
+      <canvas id="edHints"></canvas>
+    </div>
+    <p class="status" id="edStatus"></p>
+    <p class="hint">Yanlış silinen yeri <b style="color:var(--keep)">Koru</b> ile, kalan arka planı <b style="color:var(--drop)">Sil</b> ile boyayın. Kısa çizgiler yeter.</p>
+    <div class="edbar">
+      <span class="sp"></span>
+      <button id="edCancel" type="button">Vazgeç</button>
+      <button id="edApply" type="button" class="primary" style="margin:0;padding:10px 18px;font-size:15px">Uygula</button>
+    </div>
+  </div>
+
   <div id="out" hidden>
     <p>Hazır. Resmin üstüne sağ tıklayıp (telefonda basılı tutup) <b>Resmi kaydet</b> deyin.</p>
     <img id="outImg" alt="Thumbnail" style="width:100%;border-radius:8px">
@@ -116,16 +163,568 @@ const canvas = $('c'), ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 const MAX_SIDE = 1600;
 
-// Her görsel bir katman: el (çizim kaynağı), konum/boyut, geçmiş (geri al için)
+/* =========================================================
+   Arka plan ayırma motoru
+   Yöntem: renk modelleri (LAB uzayında karışım modeli, GrabCut benzeri)
+   + kullanıcı fırça işaretleri + kenara duyarlı (guided) filtre ile
+   yumuşak maske + kenar rengi temizleme.
+   ========================================================= */
+const Seg = (() => {
+  const GAMMA = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const c = i / 255; GAMMA[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  const lf = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+
+  function rgbToLab(d, n) {
+    const out = new Float32Array(n * 3);
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const r = GAMMA[d[j]], g = GAMMA[d[j + 1]], b = GAMMA[d[j + 2]];
+      const fx = lf((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+      const fy = lf(0.2126 * r + 0.7152 * g + 0.0722 * b);
+      const fz = lf((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+      out[i * 3] = 116 * fy - 16; out[i * 3 + 1] = 500 * (fx - fy); out[i * 3 + 2] = 200 * (fy - fz);
+    }
+    return out;
+  }
+
+  function box(src, w, h, r) {
+    const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const o = y * w; let sum = 0;
+      for (let x = 0; x <= Math.min(r, w - 1); x++) sum += src[o + x];
+      for (let x = 0; x < w; x++) {
+        const lo = Math.max(0, x - r), hi = Math.min(w - 1, x + r);
+        tmp[o + x] = sum / (hi - lo + 1);
+        if (x + r + 1 < w) sum += src[o + x + r + 1];
+        if (x - r >= 0) sum -= src[o + x - r];
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let y = 0; y <= Math.min(r, h - 1); y++) sum += tmp[y * w + x];
+      for (let y = 0; y < h; y++) {
+        const lo = Math.max(0, y - r), hi = Math.min(h - 1, y + r);
+        out[y * w + x] = sum / (hi - lo + 1);
+        if (y + r + 1 < h) sum += tmp[(y + r + 1) * w + x];
+        if (y - r >= 0) sum -= tmp[(y - r) * w + x];
+      }
+    }
+    return out;
+  }
+
+  // Kenara duyarlı filtre: p'yi I (kılavuz) kenarlarına oturtur
+  function guided(I, p, w, h, r, eps) {
+    const n = w * h;
+    const Ip = new Float32Array(n), II = new Float32Array(n);
+    for (let i = 0; i < n; i++) { Ip[i] = I[i] * p[i]; II[i] = I[i] * I[i]; }
+    const mI = box(I, w, h, r), mp = box(p, w, h, r), mIp = box(Ip, w, h, r), mII = box(II, w, h, r);
+    const a = new Float32Array(n), b = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const v = mII[i] - mI[i] * mI[i], c = mIp[i] - mI[i] * mp[i];
+      a[i] = c / (v + eps); b[i] = mp[i] - a[i] * mI[i];
+    }
+    const ma = box(a, w, h, r), mb = box(b, w, h, r), q = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const v = ma[i] * I[i] + mb[i]; q[i] = v < 0 ? 0 : v > 1 ? 1 : v; }
+    return q;
+  }
+
+  function resize(src, w0, h0, w1, h1) {
+    if (w0 === w1 && h0 === h1) return src;
+    const out = new Float32Array(w1 * h1), sx = w0 / w1, sy = h0 / h1;
+    for (let y = 0; y < h1; y++) {
+      const fy = Math.min(h0 - 1, Math.max(0, (y + 0.5) * sy - 0.5)), y0 = fy | 0, y1 = Math.min(h0 - 1, y0 + 1), ty = fy - y0;
+      for (let x = 0; x < w1; x++) {
+        const fx = Math.min(w0 - 1, Math.max(0, (x + 0.5) * sx - 0.5)), x0 = fx | 0, x1 = Math.min(w0 - 1, x0 + 1), tx = fx - x0;
+        out[y * w1 + x] = (src[y0 * w0 + x0] * (1 - tx) + src[y0 * w0 + x1] * tx) * (1 - ty)
+                        + (src[y1 * w0 + x0] * (1 - tx) + src[y1 * w0 + x1] * tx) * ty;
+      }
+    }
+    return out;
+  }
+
+  // k-means ile renk kümeleri (karışım modeli)
+  function kmeans(S, m, K) {
+    K = Math.max(1, Math.min(K, m));
+    const c = new Float32Array(K * 3), assign = new Int32Array(m);
+    let first = (m * 0.37) | 0;
+    c[0] = S[first * 3]; c[1] = S[first * 3 + 1]; c[2] = S[first * 3 + 2];
+    const md = new Float32Array(m).fill(1e30);
+    for (let k = 1; k < K; k++) {
+      let best = 0, bd = -1;
+      for (let i = 0; i < m; i++) {
+        const dx = S[i * 3] - c[(k - 1) * 3], dy = S[i * 3 + 1] - c[(k - 1) * 3 + 1], dz = S[i * 3 + 2] - c[(k - 1) * 3 + 2];
+        const d = dx * dx + dy * dy + dz * dz; if (d < md[i]) md[i] = d;
+        if (md[i] > bd) { bd = md[i]; best = i; }
+      }
+      c[k * 3] = S[best * 3]; c[k * 3 + 1] = S[best * 3 + 1]; c[k * 3 + 2] = S[best * 3 + 2];
+    }
+    for (let it = 0; it < 8; it++) {
+      const sum = new Float64Array(K * 3), cnt = new Float64Array(K);
+      for (let i = 0; i < m; i++) {
+        let bk = 0, bd = 1e30;
+        for (let k = 0; k < K; k++) {
+          const dx = S[i * 3] - c[k * 3], dy = S[i * 3 + 1] - c[k * 3 + 1], dz = S[i * 3 + 2] - c[k * 3 + 2];
+          const d = dx * dx + dy * dy + dz * dz; if (d < bd) { bd = d; bk = k; }
+        }
+        assign[i] = bk; sum[bk * 3] += S[i * 3]; sum[bk * 3 + 1] += S[i * 3 + 1]; sum[bk * 3 + 2] += S[i * 3 + 2]; cnt[bk]++;
+      }
+      for (let k = 0; k < K; k++) if (cnt[k]) { c[k * 3] = sum[k * 3] / cnt[k]; c[k * 3 + 1] = sum[k * 3 + 1] / cnt[k]; c[k * 3 + 2] = sum[k * 3 + 2] / cnt[k]; }
+    }
+    const cnt = new Float32Array(K), sq = new Float64Array(K);
+    for (let i = 0; i < m; i++) {
+      const k = assign[i], dx = S[i * 3] - c[k * 3], dy = S[i * 3 + 1] - c[k * 3 + 1], dz = S[i * 3 + 2] - c[k * 3 + 2];
+      sq[k] += dx * dx + dy * dy + dz * dz; cnt[k]++;
+    }
+    const model = { K, c, v: new Float32Array(K), lw: new Float32Array(K) };
+    let used = 0;
+    for (let k = 0; k < K; k++) { model.v[k] = Math.max(9, sq[k] / (3 * Math.max(1, cnt[k]))); used += cnt[k]; }
+    for (let k = 0; k < K; k++) model.lw[k] = Math.log(Math.max(1, cnt[k]) / used);
+    return model;
+  }
+
+  // Her piksel için -log olasılık
+  function nll(model, lab, n) {
+    const out = new Float32Array(n), { K, c, v, lw } = model;
+    const t = new Float32Array(K), cst = new Float32Array(K);
+    for (let k = 0; k < K; k++) cst[k] = lw[k] - 1.5 * Math.log(v[k]);
+    for (let i = 0; i < n; i++) {
+      const L = lab[i * 3], A = lab[i * 3 + 1], B = lab[i * 3 + 2];
+      let mx = -1e30;
+      for (let k = 0; k < K; k++) {
+        const dx = L - c[k * 3], dy = A - c[k * 3 + 1], dz = B - c[k * 3 + 2];
+        t[k] = cst[k] - (dx * dx + dy * dy + dz * dz) / (2 * v[k]);
+        if (t[k] > mx) mx = t[k];
+      }
+      let s = 0; for (let k = 0; k < K; k++) s += Math.exp(t[k] - mx);
+      out[i] = -(mx + Math.log(s));
+    }
+    return out;
+  }
+
+  function sampleLab(lab, idx, cap) {
+    const m = Math.min(idx.length, cap), step = idx.length / m, S = new Float32Array(m * 3);
+    for (let i = 0; i < m; i++) { const p = idx[Math.floor(i * step)]; S[i * 3] = lab[p * 3]; S[i * 3 + 1] = lab[p * 3 + 1]; S[i * 3 + 2] = lab[p * 3 + 2]; }
+    return { S, m };
+  }
+
+  // Bağlı bileşen etiketleme (4 komşu). val: etiketlenecek değer (0/1)
+  function components(mask, w, h, val) {
+    const lab = new Int32Array(w * h).fill(-1), stack = new Int32Array(w * h), comps = [];
+    for (let s = 0; s < w * h; s++) {
+      if (mask[s] !== val || lab[s] >= 0) continue;
+      const id = comps.length; let sp = 0, area = 0, border = false;
+      stack[sp++] = s; lab[s] = id;
+      while (sp) {
+        const p = stack[--sp]; area++;
+        const x = p % w, y = (p / w) | 0;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) border = true;
+        if (x > 0 && mask[p - 1] === val && lab[p - 1] < 0) { lab[p - 1] = id; stack[sp++] = p - 1; }
+        if (x < w - 1 && mask[p + 1] === val && lab[p + 1] < 0) { lab[p + 1] = id; stack[sp++] = p + 1; }
+        if (y > 0 && mask[p - w] === val && lab[p - w] < 0) { lab[p - w] = id; stack[sp++] = p - w; }
+        if (y < h - 1 && mask[p + w] === val && lab[p + w] < 0) { lab[p + w] = id; stack[sp++] = p + w; }
+      }
+      comps.push({ area, border, fg: false, bg: false });
+    }
+    return { lab, comps };
+  }
+
+  // Kenarlara duyarlı (geodezik) mesafe: tohumlardan, renk değişimi az olan yollarla yayılır
+  function geodesic(seed, lab, w, h) {
+    const n = w * h, dist = new Float32Array(n).fill(1e30);
+    const cap = n * 5 + 16, hk = new Float32Array(cap), hn = new Int32Array(cap);
+    let hs = 0;
+    const push = (k, v) => {
+      let i = hs++; hk[i] = k; hn[i] = v;
+      while (i > 0) { const pr = (i - 1) >> 1; if (hk[pr] <= hk[i]) break; const tk = hk[pr], tn = hn[pr]; hk[pr] = hk[i]; hn[pr] = hn[i]; hk[i] = tk; hn[i] = tn; i = pr; }
+    };
+    const pop = () => {
+      const k = hk[0], v = hn[0]; hs--;
+      if (hs > 0) {
+        hk[0] = hk[hs]; hn[0] = hn[hs]; let i = 0;
+        for (;;) {
+          const l = 2 * i + 1, r = l + 1; let m = i;
+          if (l < hs && hk[l] < hk[m]) m = l; if (r < hs && hk[r] < hk[m]) m = r;
+          if (m === i) break; const tk = hk[m], tn = hn[m]; hk[m] = hk[i]; hn[m] = hn[i]; hk[i] = tk; hn[i] = tn; i = m;
+        }
+      }
+      return [k, v];
+    };
+    for (let i = 0; i < n; i++) if (seed[i]) { dist[i] = 0; push(0, i); }
+    const step = (a, b) => {
+      const dx = lab[a * 3] - lab[b * 3], dy = lab[a * 3 + 1] - lab[b * 3 + 1], dz = lab[a * 3 + 2] - lab[b * 3 + 2];
+      return 1 + 0.6 * Math.sqrt(dx * dx + dy * dy + dz * dz);
+    };
+    while (hs) {
+      const [k, v] = pop();
+      if (k > dist[v]) continue;
+      const x = v % w, y = (v / w) | 0;
+      if (x > 0) { const u = v - 1, nd = k + step(v, u); if (nd < dist[u]) { dist[u] = nd; push(nd, u); } }
+      if (x < w - 1) { const u = v + 1, nd = k + step(v, u); if (nd < dist[u]) { dist[u] = nd; push(nd, u); } }
+      if (y > 0) { const u = v - w, nd = k + step(v, u); if (nd < dist[u]) { dist[u] = nd; push(nd, u); } }
+      if (y < h - 1) { const u = v + w, nd = k + step(v, u); if (nd < dist[u]) { dist[u] = nd; push(nd, u); } }
+    }
+    return dist;
+  }
+  function blurLab(lab, w, h, r) {
+    const n = w * h, out = new Float32Array(n * 3);
+    for (let c = 0; c < 3; c++) {
+      const ch = new Float32Array(n); for (let i = 0; i < n; i++) ch[i] = lab[i * 3 + c];
+      const b = box(ch, w, h, r); for (let i = 0; i < n; i++) out[i * 3 + c] = b[i];
+    }
+    return out;
+  }
+
+  // Küçük sahte parçaları ve küçük delikleri temizle
+  function clean(M, w, h, hint, core, coreArea) {
+    const n = w * h;
+    const { lab, comps } = components(M, w, h, 1);
+    let maxA = 0, anyFg = false;
+    for (let i = 0; i < n; i++) if (hint[i] === 1) { anyFg = true; break; }
+    for (const c of comps) { if (c.area > maxA) maxA = c.area; c.core = 0; }
+    for (let i = 0; i < n; i++) if (lab[i] >= 0) {
+      const c = comps[lab[i]];
+      if (hint[i] === 1) c.fg = true; else if (hint[i] === 2) c.bg = true;
+      if (core[i]) c.core++;
+    }
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const c = lab[i] >= 0 ? comps[lab[i]] : null;
+      if (!c) continue;
+      // işaretli bölgeler her zaman kalır; işaret yoksa merkezdeki veya en büyük parça(lar) kalır
+      if (c.fg || c.core >= 0.05 * coreArea || (!anyFg && c.area >= 0.5 * maxA)) out[i] = 1;
+    }
+    const holes = components(out, w, h, 0);
+    for (let i = 0; i < n; i++) if (holes.lab[i] >= 0 && hint[i] === 2) holes.comps[holes.lab[i]].bg = true;
+    for (let i = 0; i < n; i++) {
+      const c = holes.lab[i] >= 0 ? holes.comps[holes.lab[i]] : null;
+      if (c && !c.border && !c.bg && c.area < 0.012 * n) out[i] = 1;
+    }
+    return out;
+  }
+
+  // Ana ayırma: work = {w,h,lab}, hint: 1=koru 2=sil
+  function segment(work, hint) {
+    const { w, h, lab } = work, n = w * h;
+    const ring = Math.max(2, Math.round(0.02 * Math.min(w, h)));
+    const fgIdx = [], bgIdx = [], ellIdx = [], core = new Uint8Array(n);
+    const NSEG = 24, segs = Array.from({ length: 4 * NSEG }, () => ({ idx: [], m: [0, 0, 0] }));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (hint[i] === 1) fgIdx.push(i); else if (hint[i] === 2) bgIdx.push(i);
+      if (x < ring || y < ring || x >= w - ring || y >= h - ring) {
+        const dt = y, db = h - 1 - y, dl = x, dr = w - 1 - x, mn = Math.min(dt, db, dl, dr);
+        let side, t;
+        if (mn === dt) { side = 0; t = x / w; } else if (mn === db) { side = 1; t = x / w; } else if (mn === dl) { side = 2; t = y / h; } else { side = 3; t = y / h; }
+        const sg = segs[side * NSEG + Math.min(NSEG - 1, Math.floor(t * NSEG))];
+        sg.idx.push(i); sg.m[0] += lab[i * 3]; sg.m[1] += lab[i * 3 + 1]; sg.m[2] += lab[i * 3 + 2];
+      }
+      const ex = (x / w - 0.5) / 0.22, ey = (y / h - 0.5) / 0.3;
+      if (ex * ex + ey * ey < 1) { ellIdx.push(i); core[i] = 1; }
+    }
+    // Özne kenara değiyorsa o dilimler ortadaki "tipik" kenar renginden uzak olur; onları arka plan sayma
+    const live = segs.filter(sg => sg.idx.length);
+    for (const sg of live) for (let c = 0; c < 3; c++) sg.m[c] /= sg.idx.length;
+    const med = c => { const v = live.map(sg => sg.m[c]).sort((a, b) => a - b); return v[v.length >> 1]; };
+    const mid = [med(0), med(1), med(2)];
+    const dist = sg => Math.hypot(sg.m[0] - mid[0], sg.m[1] - mid[1], sg.m[2] - mid[2]);
+    const ds = live.map(dist).sort((a, b) => a - b), thr = Math.max(22, 2.5 * ds[ds.length >> 1]);
+    const ringIdx = [];
+    for (const sg of live) if (dist(sg) <= thr) for (const i of sg.idx) ringIdx.push(i);
+    if (ringIdx.length < 300) for (const sg of live) for (const i of sg.idx) ringIdx.push(i);
+    const coreArea = ellIdx.length;
+    const bgSeeds = bgIdx.concat(ringIdx.filter(i => hint[i] !== 1));
+    let mB;
+    {
+      const { S, m } = sampleLab(lab, bgSeeds, 5000);
+      mB = kmeans(S, m, 4);
+    }
+    // ilk ön plan tahmini: merkezdeki, arka plan modeline en uzak pikseller
+    let mF;
+    {
+      let cand = ellIdx.filter(i => hint[i] !== 2);
+      const nb = nll(mB, lab, n);
+      cand.sort((a, b) => nb[b] - nb[a]);
+      cand = cand.slice(0, Math.max(300, Math.floor(cand.length * 0.5)));
+      const { S, m } = sampleLab(lab, fgIdx.concat(cand), 5000);
+      mF = kmeans(S, m, 4);
+    }
+    const p = new Float32Array(n);
+    let M = new Uint8Array(n), pS = p, guideInfo = null;
+    // Fırça işareti varsa: işaretlerden kenar boyunca yayılan mesafe (renk modelini destekler)
+    let pGeo = null;
+    if (fgIdx.length) {
+      const sF = new Uint8Array(n), sB = new Uint8Array(n);
+      for (const i of fgIdx) sF[i] = 1;
+      for (const i of bgIdx) sB[i] = 1;
+      if (!bgIdx.length) for (const i of ringIdx) if (hint[i] !== 1) sB[i] = 1; // kullanıcı işareti yoksa kenar halkası
+      const ls = blurLab(lab, w, h, 2);
+      const dF = geodesic(sF, ls, w, h), dB = geodesic(sB, ls, w, h);
+      pGeo = new Float32Array(n);
+      for (let i = 0; i < n; i++) pGeo[i] = dB[i] / (dF[i] + dB[i] + 1e-6);
+    }
+    for (let it = 0; it < 4; it++) {
+      const nf = nll(mF, lab, n), nb = nll(mB, lab, n);
+      for (let i = 0; i < n; i++) {
+        let d = (nb[i] - nf[i]); d = d > 14 ? 14 : d < -14 ? -14 : d;
+        p[i] = 1 / (1 + Math.exp(-d));
+        if (pGeo) p[i] = 0.5 * p[i] + 0.5 * pGeo[i];
+        if (hint[i] === 1) p[i] = 1; else if (hint[i] === 2) p[i] = 0;
+      }
+      // kılavuz: ön plan-arka plan ekseni üzerindeki izdüşüm
+      const est = (cond) => { const s = [0, 0, 0]; let c = 0; for (let i = 0; i < n; i++) if (cond(i)) { s[0] += lab[i * 3]; s[1] += lab[i * 3 + 1]; s[2] += lab[i * 3 + 2]; c++; } return c ? { m: s.map(v => v / c), c } : null; };
+      const f = est(i => p[i] > 0.85), b = est(i => p[i] < 0.15);
+      const g = new Float32Array(n);
+      let proj = null;
+      if (f && b) {
+        const d = [f.m[0] - b.m[0], f.m[1] - b.m[1], f.m[2] - b.m[2]], dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        if (dd > 25) {
+          proj = { b: b.m, d, dd };
+          for (let i = 0; i < n; i++) { const v = ((lab[i * 3] - b.m[0]) * d[0] + (lab[i * 3 + 1] - b.m[1]) * d[1] + (lab[i * 3 + 2] - b.m[2]) * d[2]) / dd; g[i] = v < -0.3 ? -0.3 : v > 1.3 ? 1.3 : v; }
+        }
+      }
+      if (!proj) for (let i = 0; i < n; i++) g[i] = lab[i * 3] / 100;
+      guideInfo = proj;
+      const r = Math.max(3, Math.round(0.012 * Math.max(w, h)));
+      pS = guided(g, p, w, h, r, 0.02);
+      for (let i = 0; i < n; i++) if (hint[i] === 1) pS[i] = 1; else if (hint[i] === 2) pS[i] = 0;
+      for (let i = 0; i < n; i++) M[i] = pS[i] > 0.5 ? 1 : 0;
+      M = clean(M, w, h, hint, core, coreArea);
+      // sonraki tur: güvenilir pikseller + işaretler ile modeli yeniden öğren
+      const fg2 = [], bg2 = [];
+      for (let i = 0; i < n; i++) {
+        if (hint[i] === 1 || (M[i] === 1 && pS[i] > (pGeo ? 0.6 : 0.85))) fg2.push(i);
+        if (hint[i] === 2 || (M[i] === 0 && pS[i] < (pGeo ? 0.4 : 0.15))) bg2.push(i);
+      }
+      if (fg2.length < 200 || bg2.length < 200) break;
+      if (it < 3) {
+        const fgAll = fgIdx.length ? fgIdx.concat(fgIdx, fg2) : fg2;
+        const bgAll = bgIdx.length ? bgIdx.concat(bgIdx, bg2) : bg2;
+        let s = sampleLab(lab, fgAll, 6000); mF = kmeans(s.S, s.m, 5);
+        s = sampleLab(lab, bgAll, 6000); mB = kmeans(s.S, s.m, 5);
+      }
+    }
+    // maske ile yumuşak olasılığı birleştir
+    const pc = new Float32Array(n);
+    for (let i = 0; i < n; i++) pc[i] = M[i] ? Math.max(pS[i], 0.7) : Math.min(pS[i], 0.3);
+    return { pc, w, h, guide: guideInfo };
+  }
+
+  // Bir çözünürlükte (rgba verisiyle) kılavuz ve alfa üret
+  function guideAt(d, n, info) {
+    const g = new Float32Array(n), lab = rgbToLab(d, n);
+    if (!info) { for (let i = 0; i < n; i++) g[i] = lab[i * 3] / 100; return g; }
+    const { b, d: dv, dd } = info;
+    for (let i = 0; i < n; i++) {
+      const v = ((lab[i * 3] - b[0]) * dv[0] + (lab[i * 3 + 1] - b[1]) * dv[1] + (lab[i * 3 + 2] - b[2]) * dv[2]) / dd;
+      g[i] = v < -0.3 ? -0.3 : v > 1.3 ? 1.3 : v;
+    }
+    return g;
+  }
+  function refine(res, rgba, w, h) {
+    const n = w * h, up = resize(res.pc, res.w, res.h, w, h);
+    const g = guideAt(rgba, n, res.guide);
+    const r = Math.max(2, Math.round(0.004 * Math.max(w, h)));
+    return guided(g, up, w, h, r, 0.004);
+  }
+  const smooth = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  // q (0..1) -> alfa; shift: -10..10 (+ genişlet), soft: 0..10
+  function toAlpha(q, shift, soft) {
+    const t = 0.5 - shift * 0.03, wd = 0.04 + soft * 0.035, lo = t - wd / 2, a = new Float32Array(q.length);
+    for (let i = 0; i < q.length; i++) a[i] = smooth((q[i] - lo) / wd);
+    return a;
+  }
+  // Kenardaki renkleri içerideki ön plan renginden doldur (arka plan halesi olmasın)
+  function defringe(rgba, alpha, w, h, passes) {
+    const n = w * h, ok = new Uint8Array(n);
+    for (let i = 0; i < n; i++) ok[i] = alpha[i] >= 0.97 ? 1 : 0;
+    for (let ps = 0; ps < passes; ps++) {
+      const add = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x; if (ok[i] || alpha[i] <= 0) continue;
+        let r = 0, g = 0, b = 0, c = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+          const j = yy * w + xx; if (!ok[j]) continue;
+          r += rgba[j * 4]; g += rgba[j * 4 + 1]; b += rgba[j * 4 + 2]; c++;
+        }
+        if (c) add.push(i, r / c, g / c, b / c);
+      }
+      for (let k = 0; k < add.length; k += 4) { const i = add[k]; rgba[i * 4] = add[k + 1]; rgba[i * 4 + 1] = add[k + 2]; rgba[i * 4 + 2] = add[k + 3]; ok[i] = 1; }
+      if (!add.length) break;
+    }
+  }
+  return { rgbToLab, segment, refine, toAlpha, defringe };
+})();
+
+/* =========================================================
+   Arka plan düzenleyici (arayüz)
+   ========================================================= */
+const Ed = (() => {
+  const view = $('edView'), vctx = view.getContext('2d'), hints = $('edHints'), hctx = hints.getContext('2d');
+  const st = { L: null, strokes: [], cur: null, tool: 1, res: null, q: null, pw: 0, ph: 0, prev: null, cut: null, hover: null, busy: false, dirty: false, work: null };
+  const WORK = 480, PREVIEW = 900;
+
+  function levelData(src, maxSide) {
+    const k = Math.min(1, maxSide / Math.max(src.width, src.height));
+    const w = Math.max(1, Math.round(src.width * k)), h = Math.max(1, Math.round(src.height * k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0, w, h);
+    return { w, h, c, data: x.getImageData(0, 0, w, h).data };
+  }
+  function setStatus(t) { $('edStatus').textContent = t; }
+
+  function open(L) {
+    st.L = L; st.strokes = []; st.cur = null; st.res = null; st.q = null;
+    const wk = levelData(L.el, WORK), pv = levelData(L.el, PREVIEW);
+    st.work = { w: wk.w, h: wk.h, lab: Seg.rgbToLab(wk.data, wk.w * wk.h), rgba: wk.data };
+    st.prev = pv; st.pw = pv.w; st.ph = pv.h;
+    view.width = hints.width = pv.w; view.height = hints.height = pv.h;
+    st.cut = document.createElement('canvas'); st.cut.width = pv.w; st.cut.height = pv.h;
+    $('editor').hidden = false; canvas.hidden = true; $('out').hidden = true;
+    setTool(1); vctx.drawImage(L.el, 0, 0, pv.w, pv.h); schedule('Arka plan analiz ediliyor…');
+  }
+  function close() { $('editor').hidden = true; canvas.hidden = false; st.L = null; }
+
+  function buildHints() {
+    const { w, h, rgba } = st.work, hint = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) if (rgba[i * 4 + 3] < 128) hint[i] = 2; // zaten şeffaf olanlar silinmiş kalır
+    const sx = w / st.pw, stamp = (x, y, r, v) => {
+      const cx = x * sx, cy = y * sx, rr = Math.max(1, r * sx);
+      for (let yy = Math.max(0, Math.floor(cy - rr)); yy <= Math.min(h - 1, Math.ceil(cy + rr)); yy++)
+        for (let xx = Math.max(0, Math.floor(cx - rr)); xx <= Math.min(w - 1, Math.ceil(cx + rr)); xx++)
+          if ((xx - cx) * (xx - cx) + (yy - cy) * (yy - cy) <= rr * rr) hint[yy * w + xx] = v;
+    };
+    for (const s of st.strokes) {
+      for (let i = 0; i < s.pts.length; i++) {
+        const a = s.pts[i], b = s.pts[i + 1] || a, dist = Math.hypot(b.x - a.x, b.y - a.y), steps = Math.max(1, Math.ceil(dist / Math.max(1, s.r / 2)));
+        for (let k = 0; k <= steps; k++) stamp(a.x + (b.x - a.x) * k / steps, a.y + (b.y - a.y) * k / steps, s.r, s.k);
+      }
+    }
+    return hint;
+  }
+
+  function schedule(msg) {
+    setStatus(msg || 'İşleniyor…'); $('edApply').disabled = true;
+    if (st.busy) { st.dirty = true; return; }
+    st.busy = true;
+    setTimeout(run, 30);
+  }
+  function run() {
+    try {
+      const t0 = performance.now();
+      st.res = Seg.segment({ w: st.work.w, h: st.work.h, lab: st.work.lab }, buildHints());
+      st.q = Seg.refine(st.res, st.prev.data, st.pw, st.ph);
+      renderPreview();
+      setStatus('Hazır (' + Math.round(performance.now() - t0) + ' ms). Hatalı yerleri fırçayla işaretleyin.');
+      $('edApply').disabled = false;
+    } catch (e) { console.error(e); setStatus('Hata: ' + e.message); }
+    st.busy = false;
+    if (st.dirty) { st.dirty = false; schedule(); }
+  }
+
+  function renderPreview() {
+    if (!st.q) return;
+    const w = st.pw, h = st.ph, n = w * h;
+    const mode = $('edBack').value;
+    vctx.clearRect(0, 0, w, h);
+    if (mode === 'orig') { vctx.drawImage(st.L.el, 0, 0, w, h); drawHints(); return; }
+    if (mode === 'check') {
+      const s = 16;
+      for (let y = 0; y < h; y += s) for (let x = 0; x < w; x += s) { vctx.fillStyle = ((x + y) / s) % 2 ? '#c9c9c9' : '#f4f4f4'; vctx.fillRect(x, y, s, s); }
+    } else { vctx.fillStyle = { white: '#fff', black: '#000', green: '#00b140' }[mode]; vctx.fillRect(0, 0, w, h); }
+    const a = Seg.toAlpha(st.q, +$('edShift').value, +$('edSoft').value);
+    const rgba = new Uint8ClampedArray(st.prev.data);
+    Seg.defringe(rgba, a, w, h, 3);
+    for (let i = 0; i < n; i++) rgba[i * 4 + 3] = Math.min(rgba[i * 4 + 3], Math.round(a[i] * 255));
+    st.cut.getContext('2d').putImageData(new ImageData(rgba, w, h), 0, 0);
+    vctx.drawImage(st.cut, 0, 0);
+    drawHints();
+  }
+
+  function drawHints() {
+    hctx.clearRect(0, 0, st.pw, st.ph);
+    hctx.lineCap = hctx.lineJoin = 'round';
+    const all = st.cur ? st.strokes.concat([st.cur]) : st.strokes;
+    for (const s of all) {
+      hctx.strokeStyle = s.k === 1 ? 'rgba(34,197,94,.55)' : 'rgba(239,68,68,.55)';
+      hctx.fillStyle = hctx.strokeStyle; hctx.lineWidth = s.r * 2;
+      hctx.beginPath(); hctx.moveTo(s.pts[0].x, s.pts[0].y);
+      for (const p of s.pts) hctx.lineTo(p.x, p.y);
+      hctx.stroke();
+      hctx.beginPath(); hctx.arc(s.pts[0].x, s.pts[0].y, s.r, 0, 7); hctx.fill();
+    }
+    if (st.hover) {
+      hctx.lineWidth = 2; hctx.strokeStyle = st.tool === 1 ? '#22c55e' : '#ef4444';
+      hctx.beginPath(); hctx.arc(st.hover.x, st.hover.y, +$('edBrush').value, 0, 7); hctx.stroke();
+    }
+  }
+
+  function setTool(t) {
+    st.tool = t;
+    $('edKeep').classList.toggle('on', t === 1); $('edDrop').classList.toggle('on', t === 2);
+  }
+  function pos(e) {
+    const r = hints.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * st.pw / r.width, y: (e.clientY - r.top) * st.ph / r.height };
+  }
+  hints.addEventListener('pointerdown', e => {
+    if (!st.L) return;
+    const p = pos(e);
+    st.cur = { k: st.tool, r: +$('edBrush').value, pts: [p] };
+    hints.setPointerCapture(e.pointerId); drawHints();
+  });
+  hints.addEventListener('pointermove', e => {
+    const p = pos(e); st.hover = p;
+    if (st.cur) st.cur.pts.push(p);
+    drawHints();
+  });
+  const endStroke = () => {
+    if (!st.cur) return;
+    st.strokes.push(st.cur); st.cur = null; schedule();
+  };
+  hints.addEventListener('pointerup', endStroke);
+  hints.addEventListener('pointercancel', endStroke);
+  hints.addEventListener('pointerleave', () => { st.hover = null; if (!st.cur) drawHints(); });
+
+  $('edKeep').addEventListener('click', () => setTool(1));
+  $('edDrop').addEventListener('click', () => setTool(2));
+  $('edUndo').addEventListener('click', () => { if (st.strokes.length) { st.strokes.pop(); schedule(); } });
+  $('edClear').addEventListener('click', () => { st.strokes = []; schedule(); });
+  ['edBack', 'edShift', 'edSoft'].forEach(id => $(id).addEventListener('input', renderPreview));
+  $('edCancel').addEventListener('click', () => { close(); draw(); });
+
+  $('edApply').addEventListener('click', () => {
+    if (!st.res) return;
+    $('edApply').disabled = true; setStatus('Tam çözünürlükte uygulanıyor…');
+    setTimeout(() => {
+      try {
+        const el = st.L.el, w = el.width, h = el.height, c = el.getContext('2d');
+        const img = c.getImageData(0, 0, w, h), d = img.data;
+        const q = Seg.refine(st.res, d, w, h);
+        const a = Seg.toAlpha(q, +$('edShift').value, +$('edSoft').value);
+        Seg.defringe(d, a, w, h, 4);
+        for (let i = 0; i < w * h; i++) d[i * 4 + 3] = Math.min(d[i * 4 + 3], Math.round(a[i] * 255));
+        c.putImageData(img, 0, 0);
+        close(); $('bgHint').textContent = 'Arka plan kaldırıldı. Düzeltmek için tekrar açın veya orijinali geri yükleyin.';
+        draw();
+      } catch (e) { console.error(e); setStatus('Hata: ' + e.message); $('edApply').disabled = false; }
+    }, 30);
+  });
+  return { open, state: st };
+})();
+
+/* =========================================================
+   Katmanlar, sürükleme, çizim
+   ========================================================= */
 const layers = { bg: null, fg: null };
-let pickMode = false;
 
 function makeLayer(img, kind) {
   const k = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
   const el = document.createElement('canvas');
   el.width = Math.round(img.width * k); el.height = Math.round(img.height * k);
   el.getContext('2d').drawImage(img, 0, 0, el.width, el.height);
-  const L = { el, history: [], s: 1, op: 1, opOn: false };
+  const orig = document.createElement('canvas'); orig.width = el.width; orig.height = el.height;
+  orig.getContext('2d').drawImage(el, 0, 0);
+  const L = { el, orig, s: 1, op: 1, opOn: false };
   if (kind === 'bg') {
     const sc = Math.max(W / el.width, H / el.height);
     L.bw = el.width * sc; L.bh = el.height * sc;
@@ -145,8 +744,7 @@ function loadFile(input, kind) {
     const img = new Image();
     img.onload = () => {
       layers[kind] = makeLayer(img, kind);
-      $('active').value = kind;
-      syncScale(); draw();
+      $('active').value = kind; syncScale(); draw();
     };
     img.src = URL.createObjectURL(f);
   });
@@ -193,6 +791,21 @@ $('center').addEventListener('click', () => {
   L.x = (W - L.w) / 2; L.y = (H - L.h) / 2; draw();
 });
 
+// Arka plan kaldırıcıyı aç / orijinali geri yükle
+$('bgOpen').addEventListener('click', () => {
+  const L = activeLayer();
+  if (!L) { $('bgHint').textContent = 'Önce bir görsel yükleyin.'; return; }
+  $('bgHint').textContent = '';
+  Ed.open(L);
+  $('editor').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+$('bgRestore').addEventListener('click', () => {
+  const L = activeLayer();
+  if (!L) { $('bgHint').textContent = 'Önce bir görsel yükleyin.'; return; }
+  const c = L.el.getContext('2d'); c.clearRect(0, 0, L.el.width, L.el.height); c.drawImage(L.orig, 0, 0);
+  $('bgHint').textContent = 'Orijinal görsel geri yüklendi.'; draw();
+});
+
 // --- Sürükleme ---
 let drag = null;
 function toCanvas(e) {
@@ -203,7 +816,6 @@ function hit(L, p) { return L && p.x >= L.x && p.x <= L.x + L.w && p.y >= L.y &&
 
 canvas.addEventListener('pointerdown', e => {
   const p = toCanvas(e);
-  if (pickMode) { pickAt(p); return; }
   let kind = null;
   if (hit(layers.fg, p)) kind = 'fg';
   else if (layers.bg) kind = 'bg';
@@ -224,117 +836,6 @@ canvas.addEventListener('pointermove', e => {
 function endDrag() { drag = null; canvas.classList.remove('dragging'); }
 canvas.addEventListener('pointerup', endDrag);
 canvas.addEventListener('pointercancel', endDrag);
-
-// --- Arka plan kaldırma (renk benzerliğine göre) ---
-function setHint(t) { $('bgHint').textContent = t; }
-$('tol').addEventListener('input', () => $('tolVal').textContent = $('tol').value);
-
-function removeColor(L, seeds, tol, global) {
-  const el = L.el, w = el.width, h = el.height;
-  const c = el.getContext('2d');
-  const img = c.getImageData(0, 0, w, h), d = img.data;
-  L.history.push(c.getImageData(0, 0, w, h));
-  if (L.history.length > 8) L.history.shift();
-  const t2 = tol * tol; // RGB öklid uzaklığı karesi eşiği
-  let removed = 0;
-  for (const s of seeds) {
-    const si = (s.y * w + s.x) * 4;
-    if (d[si + 3] < 10) continue;
-    const r0 = d[si], g0 = d[si + 1], b0 = d[si + 2];
-    const match = i => {
-      if (d[i + 3] < 10) return true;
-      const dr = d[i] - r0, dg = d[i + 1] - g0, db = d[i + 2] - b0;
-      return dr * dr + dg * dg + db * db <= t2;
-    };
-    if (global) {
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] >= 10 && match(i)) { d[i + 3] = 0; removed++; }
-      }
-    } else {
-      const seen = new Uint8Array(w * h), stack = new Int32Array(w * h);
-      let sp = 0; stack[sp++] = s.y * w + s.x; seen[s.y * w + s.x] = 1;
-      while (sp) {
-        const p = stack[--sp], i = p * 4;
-        if (d[i + 3] >= 10) { d[i + 3] = 0; removed++; }
-        const x = p % w, y = (p / w) | 0;
-        if (x > 0 && !seen[p - 1] && match(i - 4)) { seen[p - 1] = 1; stack[sp++] = p - 1; }
-        if (x < w - 1 && !seen[p + 1] && match(i + 4)) { seen[p + 1] = 1; stack[sp++] = p + 1; }
-        if (y > 0 && !seen[p - w] && match(i - w * 4)) { seen[p - w] = 1; stack[sp++] = p - w; }
-        if (y < h - 1 && !seen[p + w] && match(i + w * 4)) { seen[p + w] = 1; stack[sp++] = p + w; }
-      }
-    }
-  }
-  c.putImageData(img, 0, 0);
-  return removed;
-}
-
-$('auto').addEventListener('click', () => {
-  const L = activeLayer();
-  if (!L) { setHint('Önce bir görsel yükleyin.'); return; }
-  const w = L.el.width, h = L.el.height;
-  const n = removeColor(L, [{x:0,y:0},{x:w-1,y:0},{x:0,y:h-1},{x:w-1,y:h-1}], +$('tol').value, $('global').checked);
-  setHint(n ? 'Arka plan silindi. Eksik kalırsa hassasiyeti artırın, fazla silindiyse azaltıp Geri al deyin.'
-            : 'Köşelerde silinecek bir şey bulunamadı. "Rengi seçerek sil" deneyin.');
-  draw();
-});
-function setPick(on) {
-  pickMode = on;
-  $('pick').classList.toggle('on', on);
-  $('pick').textContent = 'Dokunarak sil: ' + (on ? 'AÇIK' : 'KAPALI');
-  canvas.classList.toggle('picking', on);
-  setHint(on ? 'Açık: silmek istediğiniz arka plana tuvalde dokunun. Bitince butonla kapatın.' : '');
-}
-$('pick').addEventListener('click', () => {
-  if (!pickMode && !layers.fg && !layers.bg) { setHint('Önce bir görsel yükleyin.'); return; }
-  setPick(!pickMode);
-});
-// Dokunulan noktada en üstteki, şeffaf olmayan görseli bulur
-function layerAt(p) {
-  for (const kind of ['fg', 'bg']) {
-    const L = layers[kind];
-    if (!hit(L, p)) continue;
-    const x = Math.min(L.el.width - 1, Math.max(0, Math.floor((p.x - L.x) / L.w * L.el.width)));
-    const y = Math.min(L.el.height - 1, Math.max(0, Math.floor((p.y - L.y) / L.h * L.el.height)));
-    if (L.el.getContext('2d').getImageData(x, y, 1, 1).data[3] >= 10) return { kind, L, x, y };
-  }
-  return null;
-}
-function pickAt(p) {
-  const t = layerAt(p);
-  if (!t) { setHint('Orada silinecek bir görsel yok. Bir görselin üstüne dokunun.'); return; }
-  $('active').value = t.kind; syncScale();
-  const n = removeColor(t.L, [{ x: t.x, y: t.y }], +$('tol').value, $('global').checked);
-  setHint(n ? 'Silindi. Başka yere dokunabilirsiniz, hatalıysa Geri al deyin.' : 'Orası zaten şeffaf.');
-  draw();
-}
-// Yapay zekâ ile silme: @imgly/background-removal (tarayıcıda çalışır, resim yüklenmez).
-// Model dosyaları ilk kullanımda internetten indirilir (~40 MB).
-$('ai').addEventListener('click', async () => {
-  const L = activeLayer();
-  if (!L) { setHint('Önce bir görsel yükleyin.'); return; }
-  const btn = $('ai'); btn.disabled = true;
-  setHint('Model yükleniyor, ilk seferde bir dakika sürebilir...');
-  try {
-    const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
-    const src = await new Promise(r => L.el.toBlob(r, 'image/png'));
-    const out = await mod.removeBackground(src);
-    const img = await createImageBitmap(out);
-    const c = L.el.getContext('2d');
-    L.history.push(c.getImageData(0, 0, L.el.width, L.el.height));
-    c.clearRect(0, 0, L.el.width, L.el.height);
-    c.drawImage(img, 0, 0, L.el.width, L.el.height);
-    setHint('Arka plan silindi. Beğenmezseniz Geri al deyin.');
-    draw();
-  } catch (err) {
-    setHint('Yapay zekâ ile silme bu sayfada çalışmadı (internet ya da güvenlik engeli). index.html dosyasını indirip kendi tarayıcınızda açın veya renkle silmeyi kullanın.');
-  } finally { btn.disabled = false; }
-});
-$('undo').addEventListener('click', () => {
-  const L = activeLayer();
-  if (!L || !L.history.length) { setHint('Geri alınacak bir işlem yok.'); return; }
-  L.el.getContext('2d').putImageData(L.history.pop(), 0, 0);
-  setHint('Geri alındı.'); draw();
-});
 
 // --- Çizim ---
 function draw() {
@@ -376,7 +877,7 @@ function draw() {
   ctx.shadowColor = 'transparent';
 }
 
-document.querySelectorAll('input:not([type=file]):not(#scale):not(#tol):not(#global):not(#op):not(#opOn), select:not(#active), textarea')
+document.querySelectorAll('.panel input:not([type=file]):not(#scale):not(#op):not(#opOn), .panel select:not(#active), .panel textarea')
   .forEach(el => el.addEventListener('input', draw));
 
 $('dl').addEventListener('click', () => {

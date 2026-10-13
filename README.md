@@ -7,6 +7,9 @@ Tek dosyalık, ücretsiz, tarayıcıda çalışan YouTube thumbnail aracı (1280
 
 - Başlık, yazı tipi, boyut, renkler ve konumu ayarla
 - Arka plan ve ön plan (yüz/ürün) resmi ekle
-- Görselleri tuvalde sürükleyerek taşı, boyut kaydırıcısıyla büyüt/küçült
-- **Arka planı kaldır:** köşelerden otomatik ya da renge tıklayarak (düz renkli arka planlarda en iyisi), Geri al desteği var
+- Görselleri tuvalde sürükleyerek taşı, boyut ve opaklık ayarla
+- **Arka planı kaldır:** otomatik analiz yapar, hatalı yerleri **Koru** (yeşil) ve **Sil** (kırmızı) fırçasıyla düzeltirsin. Kenar ve yumuşaklık ayarı, damalı/renkli zemin önizlemesi var.
 - **PNG oluştur** ile resmi üret, sağ tıklayıp kaydet
+
+Arka plan kaldırma renk modeli + kenara duyarlı filtre kullanır (yapay zekâ modeli değil, internet gerekmez).
+Çok ince saç telleri ve arka planla aynı renkteki bölgeler fırça düzeltmesi isteyebilir.
