@@ -80,6 +80,9 @@ SONUÇ!</textarea>
     </select>
     <label for="scale">Boyut: <span id="scaleVal">100</span>%</label>
     <input type="range" id="scale" min="10" max="300" value="100">
+    <label class="check"><input type="checkbox" id="opOn"> Opaklığı kullan (seçili görsel)</label>
+    <label for="op">Opaklık: <span id="opVal">100</span>%</label>
+    <input type="range" id="op" min="0" max="100" value="100" disabled>
     <button id="center" type="button">Ortala</button>
     <p class="hint">Tuvalde görseli sürükleyerek yukarı, aşağı, sağa, sola taşıyın.</p>
   </fieldset>
@@ -122,7 +125,7 @@ function makeLayer(img, kind) {
   const el = document.createElement('canvas');
   el.width = Math.round(img.width * k); el.height = Math.round(img.height * k);
   el.getContext('2d').drawImage(img, 0, 0, el.width, el.height);
-  const L = { el, history: [], s: 1 };
+  const L = { el, history: [], s: 1, op: 1, opOn: false };
   if (kind === 'bg') {
     const sc = Math.max(W / el.width, H / el.height);
     L.bw = el.width * sc; L.bh = el.height * sc;
@@ -153,7 +156,24 @@ loadFile($('fgImg'), 'fg');
 
 function activeLayer() { return layers[$('active').value]; }
 
+function syncOpacity() {
+  const L = activeLayer();
+  $('opOn').checked = !!(L && L.opOn);
+  $('op').value = L ? Math.round(L.op * 100) : 100;
+  $('op').disabled = !(L && L.opOn);
+  $('opVal').textContent = $('op').value;
+}
+$('opOn').addEventListener('change', () => {
+  const L = activeLayer();
+  if (!L) { $('opOn').checked = false; return; }
+  L.opOn = $('opOn').checked; syncOpacity(); draw();
+});
+$('op').addEventListener('input', () => {
+  const L = activeLayer(); if (!L) return;
+  L.op = $('op').value / 100; $('opVal').textContent = $('op').value; draw();
+});
 function syncScale() {
+  syncOpacity();
   const L = activeLayer();
   $('scale').value = L ? Math.round(L.s * 100) : 100;
   $('scaleVal').textContent = $('scale').value;
@@ -309,14 +329,21 @@ function draw() {
   if (layers.bg) {
     const L = layers.bg;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = L.opOn ? L.op : 1;
     ctx.drawImage(L.el, L.x, L.y, L.w, L.h);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(0, 0, W, H);
   } else {
     const g = ctx.createLinearGradient(0, 0, W, H);
     g.addColorStop(0, $('bg1').value); g.addColorStop(1, $('bg2').value);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
-  if (layers.fg) { const L = layers.fg; ctx.drawImage(L.el, L.x, L.y, L.w, L.h); }
+  if (layers.fg) {
+    const L = layers.fg;
+    ctx.globalAlpha = L.opOn ? L.op : 1;
+    ctx.drawImage(L.el, L.x, L.y, L.w, L.h);
+    ctx.globalAlpha = 1;
+  }
   // başlık
   const size = +$('size').value, align = $('align').value;
   const lines = $('title').value.replace(/\{n\}/g, '\n').split('\n');
@@ -336,7 +363,7 @@ function draw() {
   ctx.shadowColor = 'transparent';
 }
 
-document.querySelectorAll('input:not([type=file]):not(#scale):not(#tol):not(#global), select:not(#active), textarea')
+document.querySelectorAll('input:not([type=file]):not(#scale):not(#tol):not(#global):not(#op):not(#opOn), select:not(#active), textarea')
   .forEach(el => el.addEventListener('input', draw));
 
 $('dl').addEventListener('click', () => {
