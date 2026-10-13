@@ -89,6 +89,7 @@ SONUÇ!</textarea>
     <label for="tol">Hassasiyet: <span id="tolVal">40</span></label>
     <input type="range" id="tol" min="5" max="150" value="40">
     <label class="check"><input type="checkbox" id="global"> Aynı renkteki her yeri sil (içi boşluklar dahil)</label>
+    <button id="ai" type="button">Yapay zekâ ile sil (internet gerekir)</button>
     <button id="auto" type="button">Köşelerden otomatik sil</button>
     <button id="pick" type="button">Rengi seçerek sil</button>
     <button id="undo" type="button">Geri al</button>
@@ -273,6 +274,28 @@ function pickAt(p) {
   setHint(n ? 'Silindi. Gerekirse başka bir renge tıklayın.' : 'Orası zaten şeffaf.');
   draw();
 }
+// Yapay zekâ ile silme: @imgly/background-removal (tarayıcıda çalışır, resim yüklenmez).
+// Model dosyaları ilk kullanımda internetten indirilir (~40 MB).
+$('ai').addEventListener('click', async () => {
+  const L = activeLayer();
+  if (!L) { setHint('Önce bir görsel yükleyin.'); return; }
+  const btn = $('ai'); btn.disabled = true;
+  setHint('Model yükleniyor, ilk seferde bir dakika sürebilir...');
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm');
+    const src = await new Promise(r => L.el.toBlob(r, 'image/png'));
+    const out = await mod.removeBackground(src);
+    const img = await createImageBitmap(out);
+    const c = L.el.getContext('2d');
+    L.history.push(c.getImageData(0, 0, L.el.width, L.el.height));
+    c.clearRect(0, 0, L.el.width, L.el.height);
+    c.drawImage(img, 0, 0, L.el.width, L.el.height);
+    setHint('Arka plan silindi. Beğenmezseniz Geri al deyin.');
+    draw();
+  } catch (err) {
+    setHint('Yapay zekâ ile silme bu sayfada çalışmadı (internet ya da güvenlik engeli). index.html dosyasını indirip kendi tarayıcınızda açın veya renkle silmeyi kullanın.');
+  } finally { btn.disabled = false; }
+});
 $('undo').addEventListener('click', () => {
   const L = activeLayer();
   if (!L || !L.history.length) { setHint('Geri alınacak bir işlem yok.'); return; }
